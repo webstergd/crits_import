@@ -117,7 +117,7 @@ def read_file(file_name):
     result = []
     with open(file_name) as infile:
         for line in infile:
-            result.extend([x.strip() for x in line.split(',')])
+            result.extend(line)
 
     return result
 
