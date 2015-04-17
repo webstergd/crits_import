@@ -7,6 +7,8 @@ import requests
 import time
 import sys
 
+from urllib.parse import urlparse
+
 def setup_cli(args, cfg):
     """ Configure command-line arguements """
 
@@ -48,14 +50,14 @@ def validate_configuration(args, cfg):
 
 def submit_domain(domain, cfg):
     """ Submit domain to CRITs """
-    url_tag = urlparse(domain)
+    #url_tag = urlparse(domain)
     headers = {'User-agent': 'crits_import'}
     url = "{0}/api/v1/domains/".format(cfg['crits'].get('url')) 
     params = {
         'api_key': cfg['crits'].get('key'),
         'username': cfg['crits'].get('user'),
         'source': cfg['crits'].get('source'),
-        'domain': url_tag.netloc
+        'domain': domain
     }
 
     try:
@@ -117,7 +119,7 @@ def read_file(file_name):
     result = []
     with open(file_name) as infile:
         for line in infile:
-            result.extend(line)
+            result.append(line.strip())
 
     return result
 
@@ -158,8 +160,7 @@ def main():
             domain.extend(args.domain)
 
         for d in domain:
-            submit_domain(domain, cfg)
-
+            submit_domain(d, cfg)
             time.sleep(float(delay))
 
     ### Attempt to submit sample(s)
@@ -174,7 +175,6 @@ def main():
 
         for s in sample:
             submit_sample(s, cfg)
-
             time.sleep(float(delay))
 
 if __name__ == "__main__":
