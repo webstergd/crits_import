@@ -145,6 +145,8 @@ def main():
     logging.info("Configuration successfully validated")
     print("Configuration successfully validated")
 
+    delay = cfg['importer'].get('delay', 0.5)
+
     ### Attempt to submit domain(s)
     if args.domain:
         domain = []
@@ -158,6 +160,8 @@ def main():
         for d in domain:
             submit_domain(domain, cfg)
 
+            time.sleep(float(delay))
+
     ### Attempt to submit sample(s)
     if args.sample:
         sample = []
@@ -170,6 +174,8 @@ def main():
 
         for s in sample:
             submit_sample(s, cfg)
+
+            time.sleep(float(delay))
 
 if __name__ == "__main__":
     try:
