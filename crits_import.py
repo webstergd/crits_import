@@ -2,7 +2,9 @@
 
 import argparse
 import configparser
+import hashlib
 import logging
+import magic
 import os
 import requests
 import time
@@ -27,7 +29,7 @@ def setup_cli(args):
 
 
     parser.add_argument('type', type=str, choices=('domain', 'sample'), help='Type of element to submit')
-    parser.add_argument('input', help='File or directory name')
+    parser.add_argument('input', type=str, help='File or directory name')
 
     return parser.parse_args(args)
 
@@ -83,45 +85,54 @@ def submit_domain(domain):
         logging.info("HTTP error when submitting domain {0} to CRITs".format(params['domain']))
 
 
-def submit_sample(sample):
+def submit_sample(sample_path):
     """ Submit sample to CRITs """
+    print("Submitting sample {0} to CRITs".format(sample_path))
+
     headers = {'User-agent': 'crits_import'}
     url = "{0}/api/v1/samples/".format(cfg['crits'].get('url'))
-    zip_files = ['application/zip', 'application/gzip', 'application/x-7z-compressed']
-    rar_files = ['application/x-rar-compressed']
+    zipfiles = ['application/zip', 'application/gzip', 'application/x-7z-compressed']
+    rarfiles = ['application/x-rar-compressed']
+    blacklist = cfg['importer'].get('blacklist', '').strip().split(',')
 
-    # Hash
-    md5 = hashlib.md5(sample).hexdigest()
-    files = {'filedata': (md5, sample)}
+    # Read in file
+    with open(sample_path, 'rb') as fp:
+        sample = fp.read()
 
-    mime_type = magic.from_buffer(sample, mime=True)
-    if mime_type in zip_files:
-        file_type = 'zip'
-    elif mime_type in rar_files:
-        file_type = 'rar'
-    else:
-        file_type = 'raw'
+        # Hash and type
+        md5 = hashlib.md5(sample).hexdigest()
+        files = {'filedata': (md5, sample)}
+        mimetype = magic.from_buffer(sample, mime=True)
 
-    params = {
-        'api_key': cfg['crits'].get('key'),
-        'username': cfg['crits'].get('user'),
-        'source': cfg['crits'].get('source'),
-        'upload_type': 'file',
-        'md5': md5,
-        'file_format': file_type  # must be type zip, rar, or raw
-    }
+        if not mimetype in blacklist:
+            if mimetype in zipfiles:
+                filetype = 'zip'
+            elif mimetype in rarfiles:
+                filetype = 'rar'
+            else:
+                filetype = 'raw'
 
-    try:
-        response = requests.post(url, headers=headers, files=files, data=params, verify=False)
-        if response.status_code == requests.codes.ok:
-            response_json = response.json()
-            logging.info("Submitted sample info {0} to CRITs, response was {1}".format(params['md5'], response_json))
-        else:
-            logging.info("Submission of {0} failed: {1}".format(url, response.status_code))
-    except requests.exceptions.ConnectionError:
-        logging.info("Could not connect to CRITs when submitting domain {0}".format(params['md5']))
-    except requests.exceptions.HTTPError:
-        logging.info("HTTP error when submitting domain {0} to CRITs".format(params['md5']))
+            params = {
+                'api_key': cfg['crits'].get('key'),
+                'username': cfg['crits'].get('user'),
+                'source': cfg['crits'].get('source'),
+                'upload_type': 'file',
+                'md5': md5,
+                'file_format': filetype  # must be type zip, rar, or raw
+            }
+
+            try:
+                response = requests.post(url, headers=headers, files=files, data=params, verify=False)
+                if response.status_code == requests.codes.ok:
+                    response_json = response.json()
+                    logging.info("Submitted sample info {0} to CRITs, response was {1}".format(params['md5'], response_json))
+                else:
+                    logging.info("Submission of {0} failed: {1}".format(url, response.status_code))
+            except requests.exceptions.ConnectionError:
+                logging.info("Could not connect to CRITs when submitting domain {0}".format(params['md5']))
+            except requests.exceptions.HTTPError:
+                logging.info("HTTP error when submitting domain {0} to CRITs".format(params['md5']))
+
 
 
 def read_file(file_name):
@@ -146,8 +157,11 @@ def read_folder(folder_name):
 
 def unzip_submit(zip_file, pwd):
     """ Unzips a zipfile to a temporary directory """
+    # could read the file compressed but I wanted to play it safe
+    # you can also submit zips directly to CRITs but some of these zips are huge
+    # so this is just to make it a little easier on the CRITs server. 
     with TemporaryDirectory() as dirname:
-        print('dirname is:', dirname)
+        print('Writing to temp directory:', dirname)
         with zipfile.ZipFile(zip_file) as zf:
             logging.info("Extracting zip file to: {0}".format(dirname))
             zf.extractall(path=dirname, pwd=pwd)
@@ -160,7 +174,8 @@ def unzip_submit(zip_file, pwd):
 
 def process_sample(sample, listing=False, folder=False):
     """ Figure out how to submit a sample """
-    sample = []
+    samples = []
+    print("Processing: {0}".format(sample))
     if listing:
         logging.info("Importing multiple samples from a list")
         samples = read_file(sample)
@@ -186,16 +201,17 @@ def process_sample(sample, listing=False, folder=False):
 
 def process_domain(domain, listing=False):
     """ Figure out how to submit a domain """
-    sample = []
+    domains = []
+    print("Processing: {0}".format(domain))
     if listing:
         logging.info("Importing multiple domains from a list")
-        samples = read_file(sample)
-        for s in samples:        
+        domains = read_file(domain)
+        for s in domains:        
             submit_domain(s)
             time.sleep(float(cfg['importer'].get('delay')))
     else:
         logging.info("Importing a single domain")
-        submit_domain(sample) 
+        submit_domain(domain) 
 
 
 def main():
@@ -222,10 +238,10 @@ def main():
     logging.info("Configuration successfully validated")
     print("Configuration successfully validated")
 
-    if arg.type == 'sample':
-        process_sample(arg.input, listing=arg.list, folder=arg.folder)
-    elif arg.type == 'domain':
-        process_domain(arg.input, listing=arg.list)
+    if args.type == 'sample':
+        process_sample(args.input, listing=args.list, folder=args.folder)
+    elif args.type == 'domain':
+        process_domain(args.input, listing=args.list)
 
 if __name__ == "__main__":
     try:
