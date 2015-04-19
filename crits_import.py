@@ -3,13 +3,16 @@
 import argparse
 import configparser
 import logging
+import os
 import requests
 import time
 import sys
+import zipfile
 
-from urllib.parse import urlparse
+from tempfile import TemporaryDirectory
+from fnmatch import fnmatch
 
-def setup_cli(args, cfg):
+def setup_cli(args):
     """ Configure command-line arguements """
 
     description ="""
@@ -17,18 +20,26 @@ def setup_cli(args, cfg):
 
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument('-d', '--domain', action='store', dest='domain', type=str, help='Domain to import.')
-    parser.add_argument('-s', '--sample', action='store', dest='sample', type=str, help='Sample to import.')
-    parser.add_argument('-l', '--list', action='store_true', dest='list', default=False, help='Treat arguements as a file of CSVs.')
-    #parser.add_argument('-f', '--folder', action='store_true', dest='folder', default=False, help='Treat arguements as a folder.')
+    #parser.add_argument('-d', '--domain', action='store_true', dest='domain', default=False, help='Submit domain')
+    #parser.add_argument('-s', '--sample', action='store_true', dest='sample', default=False, help='Submit sample')
+    parser.add_argument('-l', '--list', action='store_true', dest='list', default=False, help='Treat arguements as a file containing a newline seperated list')
+    parser.add_argument('-f', '--folder', action='store_true', dest='folder', default=False, help='Treat arguements as a folder')
+
+
+    parser.add_argument('type', type=str, choices=('domain', 'sample'), help='Type of element to submit')
+    parser.add_argument('input', help='File or directory name')
 
     return parser.parse_args(args)
 
 
-def validate_configuration(args, cfg):
+def validate_configuration(args):
     """ Validate configuration options """
-    if not args.domain and not args.sample:
-        print("Must supply a domain (-d) or sample (-f) arguement.")
+    if args.list and args.folder:
+        print("Must select a list (-l), a folder (-f), or nothing.")
+        sys.exit()
+
+    if args.type == 'domain' and args.folder:
+        print("Must select a list (-l) or nothing for domain. I haven't figured out this use case yet.")
         sys.exit()
 
     if not cfg['crits'].get('url', '') or cfg['crits'].get('url', '') == '<https://127.0.0.1>':
@@ -48,9 +59,8 @@ def validate_configuration(args, cfg):
         sys.exit()
 
 
-def submit_domain(domain, cfg):
+def submit_domain(domain):
     """ Submit domain to CRITs """
-    #url_tag = urlparse(domain)
     headers = {'User-agent': 'crits_import'}
     url = "{0}/api/v1/domains/".format(cfg['crits'].get('url')) 
     params = {
@@ -73,7 +83,7 @@ def submit_domain(domain, cfg):
         logging.info("HTTP error when submitting domain {0} to CRITs".format(params['domain']))
 
 
-def submit_sample(sample, cfg):
+def submit_sample(sample):
     """ Submit sample to CRITs """
     headers = {'User-agent': 'crits_import'}
     url = "{0}/api/v1/samples/".format(cfg['crits'].get('url'))
@@ -102,7 +112,6 @@ def submit_sample(sample, cfg):
     }
 
     try:
-        # Note that this request does NOT go through proxies
         response = requests.post(url, headers=headers, files=files, data=params, verify=False)
         if response.status_code == requests.codes.ok:
             response_json = response.json()
@@ -116,6 +125,7 @@ def submit_sample(sample, cfg):
 
 
 def read_file(file_name):
+    """ Reads the contents of a newline seperated listing and return a list """
     result = []
     with open(file_name) as infile:
         for line in infile:
@@ -124,16 +134,81 @@ def read_file(file_name):
     return result
 
 
+def read_folder(folder_name):
+    """ Reads the contents of a folder and returns the file names """
+    result = []
+    for (dirpath, dirnames, filenames) in os.walk(folder_name):
+        for name in filenames:
+            result.append(os.path.join(dirpath, name))
+
+    return result
+
+
+def unzip_submit(zip_file, pwd):
+    """ Unzips a zipfile to a temporary directory """
+    with TemporaryDirectory() as dirname:
+        print('dirname is:', dirname)
+        with zipfile.ZipFile(zip_file) as zf:
+            logging.info("Extracting zip file to: {0}".format(dirname))
+            zf.extractall(path=dirname, pwd=pwd)
+            
+            files = read_folder(dirname)
+            for item in files:
+                submit_sample(item)
+                time.sleep(float(cfg['importer'].get('delay')))
+
+
+def process_sample(sample, listing=False, folder=False):
+    """ Figure out how to submit a sample """
+    sample = []
+    if listing:
+        logging.info("Importing multiple samples from a list")
+        samples = read_file(sample)
+        for s in samples:        
+            submit_sample(s)
+            time.sleep(float(cfg['importer'].get('delay')))
+    elif folder:
+        logging.info("Importing multiple samples from a folder")
+        file_list = read_folder(sample)
+
+        for name in file_list:
+            if fnmatch(name, '*.zip'):
+                print("Found zip file: {0}".format(name))
+                unzip_submit(name, pwd=b'infected')
+            else:
+                print("Found file: {0}".format(name))
+                submit_sample(name)
+                time.sleep(float(cfg['importer'].get('delay')))
+    else:
+        logging.info("Importing a single sample")
+        submit_sample(sample) 
+
+
+def process_domain(domain, listing=False):
+    """ Figure out how to submit a domain """
+    sample = []
+    if listing:
+        logging.info("Importing multiple domains from a list")
+        samples = read_file(sample)
+        for s in samples:        
+            submit_domain(s)
+            time.sleep(float(cfg['importer'].get('delay')))
+    else:
+        logging.info("Importing a single domain")
+        submit_domain(sample) 
+
+
 def main():
     """ Main logic for program """
     print("Starting up CRITs_import parsing script!!!")
 
     # Read configuration file
+    global cfg
     cfg = configparser.ConfigParser()
     cfg.read('crits_import.cfg')
 
     # Set up CLI interface
-    args = setup_cli(sys.argv[1:], cfg)
+    args = setup_cli(sys.argv[1:])
 
     # Set up logging functionality
     logfile = cfg['logging'].get('filename', fallback='crits_import.log')
@@ -143,39 +218,14 @@ def main():
     print("Writing to log file {0} at level {1}.".format(logfile, level))
 
     ### Validate configuration
-    validate_configuration(args, cfg)
+    validate_configuration(args)
     logging.info("Configuration successfully validated")
     print("Configuration successfully validated")
 
-    delay = cfg['importer'].get('delay', 0.5)
-
-    ### Attempt to submit domain(s)
-    if args.domain:
-        domain = []
-        if args.list:
-            logging.info("Importing single domain")
-            domain = read_file(args.domain)
-        else:
-            logging.info("Importing multiple domains")
-            domain.extend(args.domain)
-
-        for d in domain:
-            submit_domain(d, cfg)
-            time.sleep(float(delay))
-
-    ### Attempt to submit sample(s)
-    if args.sample:
-        sample = []
-        if args.list:
-            logging.info("Importing single sample")
-            sample = read_file(args.sample)
-        else:
-            logging.info("Importing multiple samples")
-            sample.extend(args.sample)
-
-        for s in sample:
-            submit_sample(s, cfg)
-            time.sleep(float(delay))
+    if arg.type == 'sample':
+        process_sample(arg.input, listing=arg.list, folder=arg.folder)
+    elif arg.type == 'domain':
+        process_domain(arg.input, listing=arg.list)
 
 if __name__ == "__main__":
     try:
