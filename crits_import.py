@@ -78,7 +78,7 @@ def submit_domain(domain):
             response_json = response.json()
             logging.info("Submitted domain info {0} to CRITs, response was {1}".format(params['domain'], response_json))
         else:
-            logging.info("Submission of {0} failed: {1}".format(url, response.status_code))
+            logging.info("Submission of {0} failed: {1}".format(params['domain'], response.status_code))
     except requests.exceptions.ConnectionError:
         logging.info("Could not connect to CRITs when submitting domain {0}".format(params['domain']))
     except requests.exceptions.HTTPError:
@@ -127,7 +127,7 @@ def submit_sample(sample_path):
                     response_json = response.json()
                     logging.info("Submitted sample info {0} to CRITs, response was {1}".format(params['md5'], response_json))
                 else:
-                    logging.info("Submission of {0} failed: {1}".format(url, response.status_code))
+                    logging.info("Submission of {0} failed: {1}".format(params['md5'], response.status_code))
             except requests.exceptions.ConnectionError:
                 logging.info("Could not connect to CRITs when submitting domain {0}".format(params['md5']))
             except requests.exceptions.HTTPError:
