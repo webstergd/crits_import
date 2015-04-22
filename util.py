@@ -20,7 +20,7 @@ def main():
     """ Main logic for program """
     print("Starting up CRITs_import utility script!!!")
 
-    parser = argparse.ArguementParser()
+    parser = argparse.ArgumentParser()
     parse.add_argument('filename')
     args = parser.parse_args()
 
