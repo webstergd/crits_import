@@ -1,3 +1,6 @@
+import os
+import argparse
+
 def read_file(file_name):
     result = set()
     with open(file_name) as infile:
@@ -17,11 +20,12 @@ def main():
     """ Main logic for program """
     print("Starting up CRITs_import utility script!!!")
 
-    IN_FILE = 'dns.log'
-    OUT_FILE = 'parsed.dns.log'
+    parser = argparse.ArguementParser()
+    parse.add_argument('filename')
+    args = parser.parse_args()
 
-    result = read_file(IN_FILE)
-    write_file(OUT_FILE, result)
+    result = read_file(filename)
+    write_file(os.path.join(filename, '.parsed'), result)
 
 
 if __name__ == "__main__":
