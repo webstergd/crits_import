@@ -25,7 +25,8 @@ def main():
     args = parser.parse_args()
 
     result = read_file(filename)
-    write_file(os.path.join(filename, '.parsed'), result)
+    outfile = '{0}{1}'.format(args.filename, '.parsed')
+    write_file(outfile, result)
 
 
 if __name__ == "__main__":
