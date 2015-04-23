@@ -12,6 +12,7 @@ pip3 install python-magic
 Then configure crits_import.cfg
 
 # Usage
+```
 usage: crits_import.py [-h] [-l] [-f] {domain,sample} input
 
 positional arguments:
@@ -19,7 +20,8 @@ positional arguments:
   input            File or directory name
 
 optional arguments:
-  -h, --help       show this help message and exit
+  -h, --help       show this help message and exit 
   -l, --list       Treat arguements as a file containing a newline seperated
                    list
   -f, --folder     Treat arguements as a folder
+```
