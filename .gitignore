@@ -57,7 +57,7 @@ docs/_build/
 target/
 
 # Configuration
-#*.cfg
+*.cfg
 
 # zipfiles
 *.zip
