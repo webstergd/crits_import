@@ -22,11 +22,11 @@ def setup_cli(args):
 
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    #parser.add_argument('-d', '--domain', action='store_true', dest='domain', default=False, help='Submit domain')
-    #parser.add_argument('-s', '--sample', action='store_true', dest='sample', default=False, help='Submit sample')
     parser.add_argument('-l', '--list', action='store_true', dest='list', default=False, help='Treat arguements as a file containing a newline seperated list')
     parser.add_argument('-f', '--folder', action='store_true', dest='folder', default=False, help='Treat arguements as a folder')
 
+    #parser.add_argument('--campaign', action='store', dest='campaign', type=str, help='Attach to a campaign')
+    #parser.add_argument('--confidence', action='store', dest='confidence', type=str, help='Level of confidence with campain')
 
     parser.add_argument('type', type=str, choices=('domain', 'sample'), help='Type of element to submit')
     parser.add_argument('input', type=str, help='File or directory name')
@@ -60,6 +60,14 @@ def validate_configuration(args):
         print("Must supply CRIT's source in the configutation file")
         sys.exit()
 
+    if not cfg['crits'].get('campaign', '') or cfg['crits'].get('campaign', '') == '<campaign>':
+        cfg['crits']['campaign'] = ''
+    else:
+        if cfg['crits'].get('confidence', '') or cfg['crits'].get('campaign', '') == '<medium>':
+            print("Please specify confidence value in crits_import.cfg. \nValid entries are low, medium, or high.")
+        elif not cfg['crits']['confidence'] in ('low', 'medium', 'high'):
+            print("Please specify confidence value in crits_import.cfg. \nValid entries are low, medium, or high.")
+
 
 def submit_domain(domain):
     """ Submit domain to CRITs """
@@ -71,6 +79,10 @@ def submit_domain(domain):
         'source': cfg['crits'].get('source'),
         'domain': domain
     }
+
+    if not cfg['crits']['campaign'] == '':
+        params['campaign'] = cfg['crits']['campaign']
+        params['confidence'] = cfg['crits']['confidence']
 
     try:
         response = requests.post(url, headers=headers, data=params, verify=False)
@@ -120,6 +132,10 @@ def submit_sample(sample_path):
                 'md5': md5,
                 'file_format': filetype  # must be type zip, rar, or raw
             }
+
+            if not cfg['crits']['campaign'] == '':
+                params['campaign'] = cfg['crits']['campaign']
+                params['confidence'] = cfg['crits']['confidence']
 
             try:
                 response = requests.post(url, headers=headers, files=files, data=params, verify=False)
